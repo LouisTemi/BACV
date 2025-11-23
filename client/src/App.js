@@ -10,9 +10,11 @@ import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import SendPhrase from './pages/SendPhrase';
 import VerifyDoc from './pages/VerifyDoc';
+import VerifyPage from './pages/VerifyPage';
 import Homepage from './pages/Homepage';
 import {Switch, Route, Redirect} from 'react-router';
 import { useCookies } from 'react-cookie';
+import './App.css';
 
 export const UserContext = createContext();
 
@@ -32,7 +34,6 @@ function App() {
   const [login, setLogin] = useState(false)
 
   useEffect(() => {
-    //const session = isAuthenticated()
     const getUserData = async () => {      
       const response = await fetch(`/api/users/jwt`, {
         method: 'GET',
@@ -54,10 +55,7 @@ function App() {
     }
   }, [login])
 
-  
-
   return (
-
     <div className="App">
       <UserContext.Provider value={userData}>
         <Navbar />       
@@ -67,6 +65,9 @@ function App() {
           </Route>
           <Route path='/explore'>
             <Explore />
+          </Route>
+          <Route path='/verify'>
+            <VerifyPage />
           </Route>
           <Route path='/signup'>
             <SignupPage login={login} setLogin={setLogin} />
@@ -86,7 +87,6 @@ function App() {
           
           {cookie.isLoggedIn && 
           <>
-          
           <Route path='/submitDoc'>
             <SubmitDoc />
           </Route>
@@ -96,7 +96,6 @@ function App() {
           <Route path='/settingPage'>
             <Settings />
           </Route>
-          
           </>
           }            
           

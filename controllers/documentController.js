@@ -12,14 +12,14 @@ const sendEmail = require('../utils/sendEmail');
 
 //Dependencies needed to deploy and interact with the smart contract
 const deployContract = require('../contracts/pseudoDeploy');
-const {newCertificate, getAllCertificates, getWalletBalance} = require('../contracts/interact');
+const {newCertificate, getAllCertificates, getWalletBalance, revokeCertificate, getCertificateStatus} = require('../contracts/interact');
 const getTransactionData = require('../contracts/getTransactionData');
 
 //======================
 //Dependencies and Configurations for file storage and multer
-
 const multer = require('multer');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -33,10 +33,6 @@ const diskStorage = multer.diskStorage({
 const uploadMiddleware = multer({
   storage: diskStorage,
 }).any();
-//=============================================
-
-//Dependencies and configuration for the Interplentary File System (IPFS)
-const {create} = require('ipfs-http-client');
 
 //Middleware
 router.use(uploadMiddleware);
@@ -46,6 +42,11 @@ const testnetObj = {
     'localhost': 'http://localhost:8545',
     'goerli' : `https://goerli.infura.io/v3/${process.env.RINKEBY_API}`, 
     'mainnet' : `https://goerli.infura.io/v3/${process.env.MAINNET_API}`,
+};
+
+// Helper function to generate a hash of the file
+const generateFileHash = (fileBuffer) => {
+    return crypto.createHash('sha256').update(fileBuffer).digest('hex');
 };
 
 router.post('/certificates', requireAuth, async(req, res) => {
@@ -60,138 +61,333 @@ router.post('/certificates', requireAuth, async(req, res) => {
         console.log(err);
         res.status(404).json({dataError: "Error at backend"});
     }
-    
-
 });
 
-
-router.post('/deploy', requireAuth, async(req,res) => {
-    
+// Deploy route - Updated for MetaMask
+router.post('/deploy', requireAuth, async(req, res) => {
     if (req.profile.id === req.body.userId) {
         try {
             const user = await User.findOne({_id: req.body.userId});
-            const {address} = web3.eth.accounts.privateKeyToAccount(req.body.privateKey);     
-            const etherBalance = await getWalletBalance(testnetObj[req.body.testnet], address, req.body.privateKey);
+            const walletAddress = req.body.walletAddress;
             
-            if (parseFloat(etherBalance) >= 0.0075) {
-                const contractAddress = await deployContract(testnetObj[req.body.testnet], address, req.body.privateKey);
+            // Verify wallet address matches user's registered wallet
+            if (walletAddress.toLowerCase() !== user.walletAddress.toLowerCase()) {
+                return res.status(403).json({dataError: "Wallet address does not match registered wallet"});
+            }
+
+            // Check balance using just the wallet address (no private key needed)
+            const Web3 = require('web3');
+            const web3 = new Web3(testnetObj[req.body.testnet]);
+            const balanceWei = await web3.eth.getBalance(walletAddress);
+            const balanceEther = web3.utils.fromWei(balanceWei, "ether");
             
-                const ethNet = await EthereumNet.create({
-                    userId: req.body.userId,
-                    nameOfNet: req.body.testnet,
-                    address: contractAddress
+            if (parseFloat(balanceEther) >= 0.0075) {
+                // Contract address will be provided by frontend after MetaMask deployment
+                // Just return success and let frontend handle the actual deployment
+                res.status(200).json({
+                    data: "Success", 
+                    message: "Ready to deploy. Please confirm transaction in MetaMask."
                 });
-                
-                res.status(200).json({data: "Success"});
             } else {
-                console.log("Not enough Ether", etherBalance);
-                res.status(404).json({dataError: `You do not have at least 0.0075 Ether to deploy Contract. You only have ${etherBalance} Ether. Please get more Ether`});
+                console.log("Not enough Ether", balanceEther);
+                res.status(404).json({
+                    dataError: `You do not have at least 0.0075 Ether to deploy Contract. You only have ${balanceEther} Ether. Please get more Ether`
+                });
             }
             
         } catch (err) {
+            console.error("Deploy error:", err);
             const errMsg = err.message.split("{")[0];
             res.status(404).json({dataError: errMsg});
         }
-          
+    } else {
+        res.status(403).json({dataError: "Unauthorized"});
     }
 });
 
-router.post('/new', requireAuth, async(req, res) => {
-
+// New route to save deployed contract address
+router.post('/saveContract', requireAuth, async(req, res) => {
     try {
-        //const user = await User.findOne({_id: req.profile.id});
-        const deployedContract = await EthereumNet.findOne({userId: req.profile.id, nameOfNet: req.body.testnet});
+        const { contractAddress, testnet } = req.body;
+        const user = await User.findOne({_id: req.profile.id});
         
-        const projectId = process.env.IPFS_PROJECT_ID;
-        const projectSecret = process.env.IPFS_SECRET_KEY;
-        const auth = 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64');
+        if (!contractAddress || !testnet) {
+            return res.status(400).json({dataError: "Missing contract address or network"});
+        }
 
-        const ipfsObj = {
-            'localhost': {host: 'localhost', port: '5001', protocol: 'http'},
-            'infura': {
-                host: 'ipfs.infura.io', 
-                port: '5001', 
-                protocol: 'https', 
-                path: 'api/v0', 
-                headers: {
-                    authorization: auth,
-                }
-            }
-        };
-    
+        // Check if contract already exists for this network
+        const existingContract = await EthereumNet.findOne({
+            userId: req.profile.id,
+            nameOfNet: testnet
+        });
+
+        if (existingContract) {
+            return res.status(400).json({dataError: "Contract already deployed on this network"});
+        }
+
+        // Save the contract address
+        const ethNet = await EthereumNet.create({
+            userId: req.profile.id,
+            nameOfNet: testnet,
+            address: contractAddress
+        });
+        
+        res.status(200).json({data: "Success"});
+    } catch (err) {
+        console.error("Save contract error:", err);
+        res.status(404).json({dataError: err.message});
+    }
+});
+
+// Certificates route - Updated for MetaMask
+router.post('/certificates', requireAuth, async(req, res) => {
+    try {
+        const user = await User.findOne({_id: req.profile.id});
+        const deployedContract = await EthereumNet.findOne({
+            userId: req.profile.id, 
+            nameOfNet: req.body.testnet
+        });
+        
+        if (!deployedContract) {
+            return res.status(404).json({dataError: "No contract deployed on this network"});
+        }
+
+        const walletAddress = req.body.walletAddress;
+        
+        // Verify wallet address matches
+        if (walletAddress.toLowerCase() !== user.walletAddress.toLowerCase()) {
+            return res.status(403).json({dataError: "Wallet address does not match registered wallet"});
+        }
+
+        // Get all certificates - we don't need private key for reading
+        const Web3 = require('web3');
+        const web3 = new Web3(testnetObj[req.body.testnet]);
+        const path = require('path');
+        const fs = require('fs');
+        
+        // Load contract ABI
+        const contractPath = path.resolve(__dirname, '../build', 'Azcredify.json');
+        const { abi } = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
+        
+        const contract = new web3.eth.Contract(abi, deployedContract.address);
+        const studentIDs = await contract.methods.getStudentIDs().call();
+        
+        const certificates = [];
+        for (const studentID of studentIDs) {
+            const certificate = await contract.methods.getCertificateInfo(studentID).call();
+            const status = await contract.methods.getCertificateStatus(studentID).call();
+            certificates.push({
+                studentID: studentID, 
+                hash: certificate["0"], 
+                name: certificate["1"],
+                isRevoked: status.isRevoked,
+                revokedAt: status.revokedAt,
+                revocationReason: status.reason
+            });
+        }
+        
+        res.status(200).json({data: "Success", result: certificates});
+    } catch (err) {
+        console.error("Get certificates error:", err);
+        res.status(404).json({dataError: "Error at backend"});
+    }
+});
+
+// Issue new certificate - Updated for MetaMask
+router.post('/new', requireAuth, async(req, res) => {
+    try {
+        const deployedContract = await EthereumNet.findOne({
+            userId: req.profile.id, 
+            nameOfNet: req.body.testnet
+        });
+        
+        if (!deployedContract) {
+            return res.status(404).json({dataError: "No contract deployed on this network"});
+        }
+
+        const user = await User.findOne({_id: req.profile.id});
+        const walletAddress = req.body.walletAddress;
+        
+        // Verify wallet matches
+        if (walletAddress.toLowerCase() !== user.walletAddress.toLowerCase()) {
+            return res.status(403).json({dataError: "Wallet address does not match registered wallet"});
+        }
+        
         if (req.files[0]) {
-            let ipfs = await create(ipfsObj['infura']);        
-
             const file = req.files[0];
             const fileBuffer = fs.readFileSync(file.path);
-            const fileAdded = await ipfs.add({path: file.filename, content: fileBuffer});        
-            const fileHash = fileAdded.cid.toString();        
             
-            //const {studentId, documentHash, studentName, issuerName} = certificateArg;
-
+            const fileHash = generateFileHash(fileBuffer);
+            console.log('Generated file hash:', fileHash);
+            
             const certificateParams = {
                 studentId: req.body.studentId, 
                 documentHash: fileHash, 
                 studentName: req.body.studentName, 
-                issuerID: req.profile.id
+                issuerID: req.profile.id,
+                course: req.body.course || '',
+                certificateType: req.body.certificateType || '',
+                yearOfGraduation: req.body.yearOfGraduation || ''
             };
 
-            const {address} = web3.eth.accounts.privateKeyToAccount(req.body.privateKey);
-            const etherBalance = await getWalletBalance(testnetObj[req.body.testnet], address, req.body.privateKey);
+            // Check balance without private key
+            const Web3 = require('web3');
+            const web3 = new Web3(testnetObj[req.body.testnet]);
+            const balanceWei = await web3.eth.getBalance(walletAddress);
+            const balanceEther = web3.utils.fromWei(balanceWei, "ether");
             
-            if (parseFloat(etherBalance) >= 0.002) {
-                const transactionReceipt = await newCertificate(testnetObj[req.body.testnet], address, req.body.privateKey, deployedContract.address, certificateParams);
-                let rootPath = '';
-                if (process.env.NODE_ENV === 'production') {
-                    rootPath = `https://${req.hostname}/documents/${req.body.testnet}`; 
-                } else {
-                    rootPath = `${req.protocol}://${req.hostname}:${process.env.REACT_PORT}/documents/${req.body.testnet}`; 
-                }
-                  
-                await sendEmail(req.body.studentEmail, req.body.studentName, transactionReceipt.transactionHash, file, rootPath);
-
-                fs.unlinkSync(`./uploads/${file.filename}`);            
-                
-                res.status(200).json({data: "Success"});
+            if (parseFloat(balanceEther) >= 0.002) {
+                // Return certificate data for frontend to sign with MetaMask
+                res.status(200).json({
+                    data: "ReadyToSign",
+                    certificateParams: certificateParams,
+                    contractAddress: deployedContract.address,
+                    fileHash: fileHash,
+                    fileName: file.filename
+                });
             } else {
-                res.status(404).json({dataError: `You do not have at least 0.002 Ether. You only have ${etherBalance} Ether. Please get more Ether`});
+                fs.unlinkSync(`./uploads/${file.filename}`);
+                res.status(404).json({
+                    dataError: `You do not have at least 0.002 Ether. You only have ${balanceEther} Ether. Please get more Ether`
+                });
             }
-        }  
+        } else {
+            res.status(400).json({dataError: "No file uploaded"});
+        }
     } catch(err) {
         console.log("err in catch block", err);
-        const errMsg = err.message.split("{")[0];
+        const errMsg = err.message ? err.message.split("{")[0] : 'Error processing certificate';
         res.status(404).json({dataError: errMsg});
     }
 });
 
-router.post('/verifyIpfs', async (req,res) => {
+// Save certificate after MetaMask signing
+router.post('/saveCertificate', requireAuth, async(req, res) => {
+    try {
+        const { transactionHash, fileName, studentEmail, studentName, testnet } = req.body;
+        
+        if (!transactionHash) {
+            return res.status(400).json({dataError: "Transaction hash required"});
+        }
 
-    const projectId = process.env.IPFS_PROJECT_ID;
-    const projectSecret = process.env.IPFS_SECRET_KEY;
-    const auth = 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64');
-    
+        // Send email if file was uploaded
+        if (fileName) {
+            const filePath = `./uploads/${fileName}`;
+            
+            if (fs.existsSync(filePath)) {
+                let rootPath = '';
+                if (process.env.NODE_ENV === 'production') {
+                    rootPath = `https://${req.hostname}/documents/${testnet}`; 
+                } else {
+                    rootPath = `${req.protocol}://${req.hostname}:${process.env.REACT_PORT || 3000}/documents/${testnet}`; 
+                }
+                
+                try {
+                    const file = {
+                        filename: fileName,
+                        path: filePath
+                    };
+                    await sendEmail(studentEmail, studentName, transactionHash, file, rootPath);
+                } catch (emailErr) {
+                    console.log('Email sending failed (this is OK for local testing):', emailErr.message);
+                }
 
-    const ipfsObj = {
-        'localhost': {host: 'localhost', port: '5001', protocol: 'http'},
-        'infura': {
-            host: 'ipfs.infura.io', 
-            port: '5001', 
-            protocol: 'https', 
-            path: 'api/v0', 
-            headers: {
-                authorization: auth,
+                // Clean up uploaded file
+                fs.unlinkSync(filePath);
             }
         }
-    };
+        
+        res.status(200).json({
+            data: "Success",
+            transactionHash: transactionHash
+        });
+    } catch(err) {
+        console.log("Save certificate error:", err);
+        res.status(404).json({dataError: err.message});
+    }
+});
 
+// Revoke certificate - Updated for MetaMask
+router.post('/revoke', requireAuth, async(req, res) => {
+    try {
+        const { studentId, reason, testnet, walletAddress } = req.body;
+        
+        const deployedContract = await EthereumNet.findOne({
+            userId: req.profile.id, 
+            nameOfNet: testnet
+        });
+        
+        if (!deployedContract) {
+            return res.status(404).json({dataError: "No contract found for this network"});
+        }
+
+        const user = await User.findOne({_id: req.profile.id});
+        
+        // Verify wallet matches
+        if (walletAddress.toLowerCase() !== user.walletAddress.toLowerCase()) {
+            return res.status(403).json({dataError: "Wallet address does not match registered wallet"});
+        }
+
+        // Return data for frontend to sign with MetaMask
+        res.status(200).json({
+            data: "ReadyToSign",
+            contractAddress: deployedContract.address,
+            studentId: studentId,
+            reason: reason
+        });
+        
+    } catch(err) {
+        console.log("Error preparing revoke:", err);
+        const errMsg = err.message ? err.message.split("{")[0] : 'Error processing revocation';
+        res.status(404).json({dataError: errMsg});
+    }
+});
+
+// NEW: Get certificate status endpoint
+router.get('/status/:testnet/:studentId', async(req, res) => {
+    try {
+        const { testnet, studentId } = req.params;
+        
+        // Use SUPER_PRIVATEKEY for reading data
+        const privateKey = process.env.SUPER_PRIVATEKEY;
+        const {address} = web3.eth.accounts.privateKeyToAccount(privateKey);
+        
+        // Find any contract for this network (we need contract address)
+        const deployedContract = await EthereumNet.findOne({nameOfNet: testnet});
+        
+        if (!deployedContract) {
+            return res.status(404).json({dataError: "No contract found for this network"});
+        }
+
+        const status = await getCertificateStatus(
+            testnetObj[testnet],
+            address,
+            privateKey,
+            deployedContract.address,
+            studentId
+        );
+        
+        res.status(200).json({
+            data: "Success",
+            isRevoked: status.isRevoked,
+            revokedAt: status.revokedAt,
+            reason: status.reason
+        });
+        
+    } catch(err) {
+        console.log("Error getting certificate status:", err);
+        res.status(404).json({dataError: "Error retrieving certificate status"});
+    }
+});
+
+router.post('/verifyIpfs', async (req,res) => {
     try {
         if (req.files[0]) {
-            let ipfs = await create(ipfsObj['infura']);        
-    
             const file = req.files[0];
             const fileBuffer = fs.readFileSync(file.path);
-            const fileAdded = await ipfs.add({path: file.filename, content: fileBuffer});        
-            const fileHash = fileAdded.cid.toString(); 
+            
+            const fileHash = generateFileHash(fileBuffer);
+            
             fs.unlinkSync(`./uploads/${file.filename}`);                 
             res.status(200).json({ipfsHash: fileHash});
         }
@@ -199,13 +395,9 @@ router.post('/verifyIpfs', async (req,res) => {
         console.log(err);
         res.status(404).json({dataError: "Error at backend"});
     }
-   
-
 });
 
-
 router.get('/verify/:testnet/:txnHash', async (req, res) => {            
-    
     try {
         const testnetObj = {
             'localhost': 'http://localhost:8545',
@@ -216,29 +408,41 @@ router.get('/verify/:testnet/:txnHash', async (req, res) => {
         const transactionData = await getTransactionData(req.params.txnHash, testnetObj[req.params.testnet]);        
         const user = await User.findOne({_id: transactionData["3"]});
 
+        // Get revocation status
+        const privateKey = process.env.SUPER_PRIVATEKEY;
+        const {address} = web3.eth.accounts.privateKeyToAccount(privateKey);
+        const deployedContract = await EthereumNet.findOne({nameOfNet: req.params.testnet});
+        
+        let revocationStatus = { isRevoked: false, revokedAt: 0, reason: '' };
+        
+        if (deployedContract) {
+            try {
+                revocationStatus = await getCertificateStatus(
+                    testnetObj[req.params.testnet],
+                    address,
+                    privateKey,
+                    deployedContract.address,
+                    transactionData["0"] // studentId
+                );
+            } catch (statusErr) {
+                console.log("Could not get revocation status:", statusErr.message);
+            }
+        }
+
         res.status(200).json({
             documentHash: transactionData["1"],
             studentName: transactionData["2"],
             studentId: transactionData["0"],
-            issuerName: user.issuer, 
-            domainValidated: user.domainValidated
+            issuerName: user ? user.issuer : "Unknown",
+            domainValidated: user ? user.domainValidated : false,
+            isRevoked: revocationStatus.isRevoked,
+            revokedAt: revocationStatus.revokedAt,
+            revocationReason: revocationStatus.reason
         });
     } catch (err) {
         console.log(err);
+        res.status(404).json({dataError: "Error retrieving transaction data"});
     }
 });
-
-//const getWalletBalance = async(testnetArg, addressArg, privateKeyArg) => {   
-// router.get('/walletBalance', async(req,res) => {
-//     try {
-//         const {address} = web3.eth.accounts.privateKeyToAccount("48d29642ec637702fe6e5017dacc71cc75f4b9df5df8f5114901f89fc46a862f");                    
-//         const etherBalance = await getWalletBalance(testnetObj["localhost"], address, "48d29642ec637702fe6e5017dacc71cc75f4b9df5df8f5114901f89fc46a862f");
-//         res.status(200).json({data: etherBalance});
-//     } catch (err) {
-//         console.log(err);
-//     }
-    
-
-// });
 
 module.exports = router;

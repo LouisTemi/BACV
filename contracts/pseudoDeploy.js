@@ -3,17 +3,30 @@ const Web3 = require('web3');
 const {abi, bytecode} = require('./compile.js');
 
 const deployContract = async(testnetArg, addressArg, privateKeyArg) => {    
-    const provider = new HDWalletProvider(
-        privateKeyArg,
-        testnetArg,
-    );
+    // Updated HDWalletProvider format for newer versions
+    const provider = new HDWalletProvider({
+        privateKeys: [privateKeyArg],
+        providerOrUrl: testnetArg,
+    });
+    
     const web3 = new Web3(provider);    
     let contract = new web3.eth.Contract(abi);
-    contract = await contract.deploy({data: bytecode}).send({gas: '750000', gasPrice: '10000000000', from: addressArg});   
-    const gasEstimate = await contract.deploy({data: bytecode}).estimateGas();
-    console.log('contract is deployed to: ', contract.options.address);
-    console.log('gas needed for deployment: ', gasEstimate);
-    return contract.options.address;    
+    
+    try {
+        // Increased gas limit for the larger contract with revocation
+        contract = await contract.deploy({data: bytecode}).send({
+            gas: '3000000', 
+            gasPrice: '20000000000', 
+            from: addressArg
+        });   
+        console.log('Contract deployed to:', contract.options.address);
+        provider.engine.stop();
+        return contract.options.address;
+    } catch (err) {
+        console.log('Deployment error:', err.message);
+        provider.engine.stop();
+        throw err;
+    }
 }
 
 module.exports = deployContract;

@@ -1,0 +1,299 @@
+{
+  "contractAddress": "0x5b1869D9A4C187F2EAa108f3062412ecf0526b24",
+  "abi": [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "documentHash",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "studentName",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "issuerID",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "course",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "certificateType",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "yearOfGraduation",
+          "type": "string"
+        }
+      ],
+      "name": "CertificateInfo",
+      "type": "event",
+      "signature": "0x0268e1800c18a90a8521ea13f9d5ed34c84d3d824c84b84ecb762793cf644a81"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "studentId",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "revokedAt",
+          "type": "uint256"
+        }
+      ],
+      "name": "CertificateRevoked",
+      "type": "event",
+      "signature": "0x6085852f448256d816e5ed2b9c9e1727a9f23642db7280193c2956e989ed0187"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_studentId",
+          "type": "string"
+        }
+      ],
+      "name": "getCertificateInfo",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0x507dce19"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_studentId",
+          "type": "string"
+        }
+      ],
+      "name": "getCertificateStatus",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "isRevoked",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "revokedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xecdced6c"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_studentId",
+          "type": "string"
+        }
+      ],
+      "name": "getFullCertificateInfo",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "documentHash",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "studentName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "issuerID",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "course",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "certificateType",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "yearOfGraduation",
+          "type": "string"
+        },
+        {
+          "internalType": "bool",
+          "name": "isRevoked",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "revokedAt",
+          "type": "uint256"
+        },
+        {
+          "internalType": "string",
+          "name": "revocationReason",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0x5a6dfe82"
+    },
+    {
+      "inputs": [],
+      "name": "getStudentIDs",
+      "outputs": [
+        {
+          "internalType": "string[]",
+          "name": "",
+          "type": "string[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xd5a26c01"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "name": "listOfStudentIDs",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function",
+      "constant": true,
+      "signature": "0xf7ea9891"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_studentId",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_reason",
+          "type": "string"
+        }
+      ],
+      "name": "revokeCertificate",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function",
+      "signature": "0xbc4f5bad"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "_studentId",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_documentHash",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_studentName",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_issuerID",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_course",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_certificateType",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_yearOfGraduation",
+          "type": "string"
+        }
+      ],
+      "name": "setCertificate",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function",
+      "signature": "0x3216255b"
+    }
+  ],
+  "network": "ganache-local",
+  "deployedAt": "2025-11-23T16:42:51.108Z"
+}

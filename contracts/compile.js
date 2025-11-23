@@ -29,6 +29,22 @@ const input = {
 
 const output = JSON.parse(solc.compile(JSON.stringify(input)));
 const abi = output.contracts['Azcredify']['Azcredify'].abi;
+
 const bytecode = output.contracts['Azcredify']['Azcredify']['evm']['bytecode']['object'];
 module.exports = { abi, bytecode } ;
 
+// make build folder
+const buildPath = path.resolve(__dirname, "../build");
+if (!fs.existsSync(buildPath)) {
+  fs.mkdirSync(buildPath);
+}
+
+// write compiled output
+const outputPath = path.resolve(buildPath, "Azcredify.json");
+fs.writeFileSync(
+  outputPath,
+  JSON.stringify({ abi, bytecode }, null, 2),
+  "utf8"
+);
+
+console.log("Compilation successful. Output written to build/Azcredify.json");

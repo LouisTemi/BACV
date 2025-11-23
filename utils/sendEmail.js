@@ -1,74 +1,94 @@
 require('dotenv').config({ path: `${__dirname}/../.env` });
 const nodemailer = require("nodemailer");
 const QRCode = require('qrcode');
-const cloudinary = require('cloudinary').v2;
 const fs = require('fs');
 const path = require('path');
 global.appRoot = path.resolve(__dirname);
 
-cloudinary.config({ 
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true
-});
-
 const sendEmail = async(receiverEmail, receiverName, txnHash, pdfFileRaw, rootServer) => {
-  console.log(pdfFileRaw);
-  // create reusable transporter object using the default SMTP transport
+  console.log('Preparing to send email...');
+  console.log('Receiver:', receiverEmail);
+  console.log('Transaction Hash:', txnHash);
+  
+  // Use Ethereal for testing (fake SMTP - emails viewable at ethereal.email)
   const transporter = nodemailer.createTransport({
-    host: 'smtp.mail.yahoo.com',
-    service: 'yahoo',
-    port: 465,    
-    secure: true,
+    host: 'smtp.ethereal.email',
+    port: 587,
+    secure: false,
     auth: {
-      user: process.env.NODEMAILER_EMAIL, 
-      pass: process.env.NODEMAILER_PW, 
+      user: process.env.ETHEREAL_EMAIL,
+      pass: process.env.ETHEREAL_PASSWORD,
     },
-    logger: true
   });
 
-  console.log("After email transporter created")
+  console.log("Email transporter created");
   
-  //To create QR code file
+  // Create QR code file
   const qrCodeFile = `${appRoot}/../uploads/${Date.now()}_qrcode.png`;
+  console.log("Creating QR code at:", qrCodeFile);
 
-  console.log("qrCodeFile", qrCodeFile);
+  // Generate QR code with verification URL
+  const verificationUrl = `${rootServer}/${txnHash}`;
+  await QRCode.toFile(qrCodeFile, verificationUrl);
+  console.log("QR code created for URL:", verificationUrl);
 
-  await QRCode.toFile(qrCodeFile, `${rootServer}/${txnHash}`);
-  // rootServer = http://domain.name.com/documents/testnet (whereby testnet refers to either {localhost, goerli, mainnet}, where the smart contract is deployed)    
-  // upload the QR code to cloudinary and optain the url of the stored file. I have to do this since most web email like Google Mail cannot read base64 images.
-  const {url} = await cloudinary.uploader.upload(qrCodeFile);
+  // Read QR code as base64 for embedding in email
+  const qrCodeBase64 = fs.readFileSync(qrCodeFile, { encoding: 'base64' });
 
   const pdfFile = {
     filename: pdfFileRaw.filename, 
     path: pdfFileRaw.path
-  }
+  };
 
-  console.log("url of QRcode", url);
-  
   const htmlTemplate = `
-  <p>Dear ${receiverName}, </p>
-  <p>Congratulations on your graduation! Your PDF certificate is attached. </p>
-  <p>Your certificate has also been stored on the Ethereum blockchain with the following transaction hash: ${txnHash}. With this, your certificate can never be tampered with. </p>
-  <p>You can ask your future employers to either click on this <a href="${rootServer}/${txnHash}">link</a> or scan the QR code below to verify the certificate</p>
-  <img src=${url} alt="qr code image" />
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+    <h2 style="color: #1a73e8;">Certificate Issued Successfully</h2>
+    <p>Dear ${receiverName},</p>
+    <p>Congratulations on your graduation! Your PDF certificate is attached to this email.</p>
+    <p>Your certificate has been stored on the Ethereum blockchain with the following transaction hash:</p>
+    <p style="background-color: #f5f5f5; padding: 10px; font-family: monospace; word-break: break-all;">
+      ${txnHash}
+    </p>
+    <p>Your certificate can never be tampered with. You can ask your future employers to either:</p>
+    <ul>
+      <li>Click this <a href="${verificationUrl}" style="color: #1a73e8;">verification link</a></li>
+      <li>Or scan the QR code below:</li>
+    </ul>
+    <p><img src="cid:qrcode" alt="QR Code for verification" style="width: 150px; height: 150px;"/></p>
+    <hr style="border: 1px solid #eee; margin: 20px 0;">
+    <p style="color: #666; font-size: 12px;">This is an automated message from Verificate - A blockchain-based certificate verification system.</p>
+  </div>
   `;
   
-  // send mail with defined transport object
+  // Send mail with defined transport object
   const info = await transporter.sendMail({
-    from: process.env.NODEMAILER_EMAIL, // sender address
-    to: receiverEmail, // list of receivers
-    subject: "Your Graduation Certificate", // Subject line
-    text: "Dear " + receiverName + ", Congratulations on your graduation. Your transaction hash will serve as a verification tool: " + txnHash + '. Link to QR Code: ' + url, // plain text body
-    html: htmlTemplate, // html body
-    attachments: pdfFile
+    from: '"Verificate" <certificates@verificate.com>',
+    to: receiverEmail,
+    subject: "Your Graduation Certificate - Blockchain Verified",
+    text: `Dear ${receiverName}, Congratulations on your graduation. Your transaction hash for verification: ${txnHash}. Verification link: ${verificationUrl}`,
+    html: htmlTemplate,
+    attachments: [
+      pdfFile,
+      {
+        filename: 'qrcode.png',
+        path: qrCodeFile,
+        cid: 'qrcode' // Referenced in the HTML as cid:qrcode
+      }
+    ]
   });
 
-  console.log("Message sent: " + info.messageId);
+  console.log("Message sent successfully!");
+  console.log("Message ID:", info.messageId);
+  
+  // IMPORTANT: Preview URL for Ethereal (view the email online)
+  console.log("========================================");
+  console.log("VIEW EMAIL AT: %s", nodemailer.getTestMessageUrl(info));
+  console.log("========================================");
+  
+  // Clean up QR code file
   fs.unlinkSync(qrCodeFile);
   
-}
-//sendEmail("khairul.azman.rahmat@gmail.com", "transactionhash");
-module.exports = sendEmail;
+  return info;
+};
 
+module.exports = sendEmail;

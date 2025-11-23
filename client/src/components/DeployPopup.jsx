@@ -1,5 +1,6 @@
 import React, {useState, useContext} from 'react';
 import { UserContext } from '../App.js';
+import { connectMetaMask } from '../utils/metamask';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
@@ -10,21 +11,18 @@ import DialogContent from '@mui/material/DialogContent';
 import DialogContentText from '@mui/material/DialogContentText';
 import DialogTitle from '@mui/material/DialogTitle';
 import Button from '@mui/material/Button';
-import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import Alert from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
+import Box from '@mui/material/Box';
+import { ethers } from 'ethers';
 
-
-export default function DeployPopup({method, setCertificates}) {
-    console.log("Method: ", method);
+export default function DeployPopup({method, setCertificates, setTestnet}) {
     const userData = useContext(UserContext);               
     const [etherErrorMsg, setEtherErrorMsg] = useState('');
-    const [deployState, setDeployState] = useState({
-        testnet: '',
-        privateKey: ''
-    });
-    
-    
-    const [open, setOpen] = React.useState(false);
+    const [testnetSelection, setTestnetSelection] = useState('');
+    const [open, setOpen] = useState(false);
+    const [isDeploying, setIsDeploying] = useState(false);
 
     const handleClickOpen = () => {
         setOpen(true);
@@ -32,87 +30,240 @@ export default function DeployPopup({method, setCertificates}) {
 
     const handleClose = () => {
         setOpen(false);
+        setEtherErrorMsg('');
     };
 
-    const handleDeployInputChange = (event) => {
-        setDeployState({
-            ...deployState, 
-            [event.target.name]: event.target.value
-        })
-    }
+    const handleTestnetChange = (event) => {
+        setTestnetSelection(event.target.value);
+    };
+
+    const getChainId = (network) => {
+        const chainIds = {
+            'localhost': 1337,
+            'goerli': 5,
+            'sepolia': 11155111,
+            'mainnet': 1
+        };
+        return chainIds[network] || 1337;
+    };
 
     const handleDeployment = async () => {
-        
-        const response = await fetch(`/api/documents/${method}`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },  
-            body: JSON.stringify({
-                userId: userData.userId, 
-                testnet: deployState.testnet, 
-                privateKey: deployState.privateKey
-             })          
-        });            
+        setEtherErrorMsg('');
 
-        const data = await response.json();
-        
-        if(data.data === "Success") {     
-            if (method === "deploy") {
-                setOpen(false);
-                window.location.assign('/submitDoc');
-            } else {
-                console.log(data.result);
-                setCertificates(data.result);
-                setOpen(false);
-            }
-        } else if (data.dataError) {                        
-            setEtherErrorMsg(data.dataError);
+        if (!testnetSelection) {
+            setEtherErrorMsg('Please select a network');
+            return;
         }
-    }
 
+        try {
+            setIsDeploying(true);
+
+            // Connect MetaMask
+            const { address, chainId, signer, provider } = await connectMetaMask();
+
+            // Verify correct network
+            const expectedChainId = getChainId(testnetSelection);
+            if (chainId !== expectedChainId) {
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: `0x${expectedChainId.toString(16)}` }],
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (switchError) {
+                    const networkName = testnetSelection === 'localhost' ? 'Localhost 8545' : testnetSelection;
+                    throw new Error(`Please switch MetaMask to ${networkName} network`);
+                }
+            }
+
+            // Check if wallet matches
+            if (address.toLowerCase() !== userData.walletAddress.toLowerCase()) {
+                throw new Error('Connected wallet does not match your registered wallet address');
+            }
+
+            if (method === "deploy") {
+                // Load contract ABI and bytecode
+                const response = await fetch('/contractConfig.json');
+                const contractData = await response.json();
+                
+                // Deploy contract using MetaMask
+                const factory = new ethers.ContractFactory(
+                    contractData.abi, 
+                    contractData.bytecode || contractData.abi, 
+                    signer
+                );
+                
+                console.log('Deploying contract...');
+                const contract = await factory.deploy();
+                console.log('Waiting for deployment...');
+                await contract.deployed();
+                console.log('Contract deployed at:', contract.address);
+                
+                // Save contract address to backend
+                const saveResponse = await fetch('/api/documents/saveContract', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                        contractAddress: contract.address,
+                        testnet: testnetSelection
+                    })
+                });
+
+                const saveData = await saveResponse.json();
+                
+                if (saveData.data === "Success") {
+                    setIsDeploying(false);
+                    setOpen(false);
+                    alert(`Contract deployed successfully at ${contract.address}`);
+                    window.location.assign('/submitDoc');
+                } else {
+                    throw new Error(saveData.dataError || 'Failed to save contract');
+                }
+            } else {
+                // Load certificates
+                const response = await fetch(`/api/documents/certificates`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },  
+                    body: JSON.stringify({
+                        testnet: testnetSelection, 
+                        walletAddress: address
+                    })          
+                });            
+
+                const data = await response.json();
+                
+                if (data.data === "Success") {
+                    console.log(data.result);
+                    setCertificates(data.result);
+                    if (setTestnet) {
+                        setTestnet(testnetSelection);
+                    }
+                    setIsDeploying(false);
+                    setOpen(false);
+                } else if (data.dataError) {                        
+                    setEtherErrorMsg(data.dataError);
+                    setIsDeploying(false);
+                }
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            setEtherErrorMsg(error.message || 'Operation failed');
+            setIsDeploying(false);
+        }
+    };
 
     return (
         <div>
-            <Button variant="contained" onClick={handleClickOpen}>{method === "deploy" ? "Deploy" : "Load Certificates"}</Button>
+            <Button 
+                variant="contained" 
+                onClick={handleClickOpen}
+                sx={{
+                    background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    '&:hover': {
+                        background: 'linear-gradient(135deg, #1d4ed8 0%, #6d28d9 100%)',
+                    }
+                }}
+            >
+                {method === "deploy" ? "Deploy Contract" : "Load Certificates"}
+            </Button>
 
-            <Dialog open={open} onClose={handleClose}>
-                <DialogTitle>Smart Contract</DialogTitle>
+            <Dialog 
+                open={open} 
+                onClose={handleClose}
+                maxWidth="sm"
+                fullWidth
+                PaperProps={{
+                    sx: { borderRadius: '16px' }
+                }}
+            >
+                <DialogTitle>
+                    <Typography sx={{ fontSize: '20px', fontWeight: 600 }}>
+                        {method === "deploy" ? "Deploy Smart Contract" : "Load Certificates"}
+                    </Typography>
+                </DialogTitle>
                 <DialogContent>
-                <DialogContentText>
-                    To deploy or interact with your Smart Contract, you will need to re-enter your private key.
-                </DialogContentText>
-                <FormControl variant="filled" color="success" fullWidth margin="normal" sx={{maxWidth: "300px"}}>
-                    <InputLabel id="testnet">Choose an ETH Network</InputLabel>
-                    <Select
-                    labelId="ethNetwork"
-                    id="ethNetwork"
-                    name="testnet"
-                    value={deployState.testnet}
-                    label="Ethereum Network"
-                    onChange={handleDeployInputChange}
-                    >
-                        <MenuItem value="localhost">Localhost</MenuItem>
-                        <MenuItem value="goerli">Goerli</MenuItem>
-                        <MenuItem value="mainnet">Mainnet</MenuItem>                        
-                    </Select>
-                </FormControl>  
-                <TextField
-                    autoFocus
-                    margin="dense"
-                    id="privateKey"
-                    label="Private Key"
-                    type="password"
-                    fullWidth
-                    variant="standard"
-                    name="privateKey"
-                    onChange={handleDeployInputChange}
-                />
+                    <DialogContentText sx={{ mb: 3 }}>
+                        {method === "deploy" 
+                            ? "Deploy your smart contract to start issuing certificates." 
+                            : "Load your issued certificates from the blockchain."}
+                    </DialogContentText>
+
+                    {userData.walletAddress && (
+                        <Alert severity="info" sx={{ mb: 3, borderRadius: '10px' }}>
+                            <Typography sx={{ fontSize: '13px' }}>
+                                Connected Wallet: <br/>
+                                <Box component="span" sx={{ fontFamily: 'monospace', fontSize: '12px' }}>
+                                    {userData.walletAddress}
+                                </Box>
+                            </Typography>
+                        </Alert>
+                    )}
+
+                    <FormControl fullWidth sx={{ mb: 2 }}>
+                        <InputLabel>Select Network</InputLabel>
+                        <Select
+                            value={testnetSelection}
+                            label="Select Network"
+                            onChange={handleTestnetChange}
+                            sx={{ borderRadius: '10px' }}
+                        >
+                            <MenuItem value="localhost">Localhost (Development)</MenuItem>
+                            <MenuItem value="goerli">Goerli Testnet</MenuItem>
+                            <MenuItem value="mainnet">Ethereum Mainnet</MenuItem>                        
+                        </Select>
+                    </FormControl>
+
+                    {method === "deploy" && (
+                        <Alert severity="warning" sx={{ borderRadius: '10px' }}>
+                            <Typography sx={{ fontSize: '14px' }}>
+                                MetaMask will prompt you to sign the deployment transaction.
+                            </Typography>
+                        </Alert>
+                    )}
+
+                    {etherErrorMsg && (
+                        <Alert severity="error" sx={{ mt: 2, borderRadius: '10px' }}>
+                            {etherErrorMsg}
+                        </Alert>
+                    )}
                 </DialogContent>
-                <DialogActions>
-                <Button onClick={handleClose}>Cancel</Button>
-                <Button onClick={handleDeployment}>{method === "deploy" ? "Deploy" : "Load Certificates"}</Button>
+                <DialogActions sx={{ p: 3, pt: 0 }}>
+                    <Button 
+                        onClick={handleClose}
+                        disabled={isDeploying}
+                        sx={{ 
+                            borderRadius: '10px',
+                            textTransform: 'none',
+                            fontWeight: 500
+                        }}
+                    >
+                        Cancel
+                    </Button>
+                    <Button 
+                        onClick={handleDeployment}
+                        disabled={isDeploying}
+                        variant="contained"
+                        sx={{
+                            background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
+                            borderRadius: '10px',
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            minWidth: '120px',
+                            '&:hover': {
+                                background: 'linear-gradient(135deg, #1d4ed8 0%, #6d28d9 100%)',
+                            }
+                        }}
+                    >
+                        {isDeploying ? (
+                            <CircularProgress size={20} sx={{ color: 'white' }} />
+                        ) : (
+                            method === "deploy" ? "Deploy" : "Load"
+                        )}
+                    </Button>
                 </DialogActions>
-                { etherErrorMsg !== '' && <Typography variant="subtitle2" color="error.main" ml={2} mr={1.1} mb={1.2}>{etherErrorMsg}</Typography>}
             </Dialog>
         </div>
-    )
+    );
 }
