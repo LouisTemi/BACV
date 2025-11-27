@@ -30,6 +30,19 @@ const diskStorage = multer.diskStorage({
   },
 })
 
+// Helper function to mask email
+const maskEmail = (email) => {
+    if (!email) return '';
+    const [username, domain] = email.split('@');
+    if (username.length <= 3) {
+        return `${username[0]}***@${domain}`;
+    }
+    const visibleStart = username.slice(0, 2);
+    const visibleEnd = username.slice(-1);
+    const maskedPart = '*'.repeat(Math.min(username.length - 3, 5));
+    return `${visibleStart}${maskedPart}${visibleEnd}@${domain}`;
+};
+
 const uploadMiddleware = multer({
   storage: diskStorage,
 }).any();
@@ -40,8 +53,9 @@ router.use(uploadMiddleware);
 //HTTP routes for different testnets and mainnet
 const testnetObj = {
     'localhost': 'http://localhost:8545',
-    'goerli' : `https://goerli.infura.io/v3/${process.env.RINKEBY_API}`, 
-    'mainnet' : `https://goerli.infura.io/v3/${process.env.MAINNET_API}`,
+    'sepolia': `https://sepolia.infura.io/v3/${process.env.SEPOLIA_API}`,
+    'goerli': `https://goerli.infura.io/v3/${process.env.RINKEBY_API}`, 
+    'mainnet': `https://mainnet.infura.io/v3/${process.env.MAINNET_API}`,
 };
 
 // Helper function to generate a hash of the file
@@ -49,19 +63,7 @@ const generateFileHash = (fileBuffer) => {
     return crypto.createHash('sha256').update(fileBuffer).digest('hex');
 };
 
-router.post('/certificates', requireAuth, async(req, res) => {
-    try {
-        const user = await User.findOne({_id: req.profile.id});
-        const deployedContract = await EthereumNet.findOne({userId: req.profile.id, nameOfNet: req.body.testnet});         
-        const {address} = web3.eth.accounts.privateKeyToAccount(req.body.privateKey);   
-        const result = await getAllCertificates(testnetObj[req.body.testnet], address, req.body.privateKey, deployedContract.address);    
-        console.log(result);
-        res.status(200).json({data: "Success", result: result});
-    } catch (err) {
-        console.log(err);
-        res.status(404).json({dataError: "Error at backend"});
-    }
-});
+
 
 // Deploy route - Updated for MetaMask
 router.post('/deploy', requireAuth, async(req, res) => {
@@ -397,21 +399,62 @@ router.post('/verifyIpfs', async (req,res) => {
     }
 });
 
+// Add this route - REPLACE the existing router.get('/verify/:testnet/:txnHash') route
 router.get('/verify/:testnet/:txnHash', async (req, res) => {            
     try {
         const testnetObj = {
             'localhost': 'http://localhost:8545',
-            'goerli' : `https://goerli.infura.io/v3/${process.env.RINKEBY_API}`,
-            'mainnet' : `https://goerli.infura.io/v3/${process.env.MAINNET_API}`,
+            'sepolia': `https://sepolia.infura.io/v3/${process.env.SEPOLIA_API}`,
+            'mainnet': `https://mainnet.infura.io/v3/${process.env.MAINNET_API}`,
         };
 
+        // Get basic transaction data
         const transactionData = await getTransactionData(req.params.txnHash, testnetObj[req.params.testnet]);        
         const user = await User.findOne({_id: transactionData["3"]});
+
+        // Get full certificate info from smart contract
+        const Web3 = require('web3');
+        const web3Instance = new Web3(testnetObj[req.params.testnet]);
+        const path = require('path');
+        const fs = require('fs');
+        
+        // Load contract ABI
+        const contractPath = path.resolve(__dirname, '../build', 'Azcredify.json');
+        const { abi } = JSON.parse(fs.readFileSync(contractPath, 'utf8'));
+        
+        // Find the contract address for this network
+        const deployedContract = await EthereumNet.findOne({
+            userId: transactionData["3"],
+            nameOfNet: req.params.testnet
+        });
+
+        let fullCertData = {
+            course: '',
+            certificateType: '',
+            yearOfGraduation: ''
+        };
+
+        if (deployedContract) {
+            try {
+                const contract = new web3Instance.eth.Contract(abi, deployedContract.address);
+                const studentId = transactionData["0"];
+                
+                // Call getFullCertificateInfo instead of basic getCertificateInfo
+                const certInfo = await contract.methods.getFullCertificateInfo(studentId).call();
+                
+                fullCertData = {
+                    course: certInfo.course || '',
+                    certificateType: certInfo.certificateType || '',
+                    yearOfGraduation: certInfo.yearOfGraduation || ''
+                };
+            } catch (err) {
+                console.log("Could not get full certificate info:", err.message);
+            }
+        }
 
         // Get revocation status
         const privateKey = process.env.SUPER_PRIVATEKEY;
         const {address} = web3.eth.accounts.privateKeyToAccount(privateKey);
-        const deployedContract = await EthereumNet.findOne({nameOfNet: req.params.testnet});
         
         let revocationStatus = { isRevoked: false, revokedAt: 0, reason: '' };
         
@@ -422,7 +465,7 @@ router.get('/verify/:testnet/:txnHash', async (req, res) => {
                     address,
                     privateKey,
                     deployedContract.address,
-                    transactionData["0"] // studentId
+                    transactionData["0"]
                 );
             } catch (statusErr) {
                 console.log("Could not get revocation status:", statusErr.message);
@@ -435,6 +478,9 @@ router.get('/verify/:testnet/:txnHash', async (req, res) => {
             studentId: transactionData["0"],
             issuerName: user ? user.issuer : "Unknown",
             domainValidated: user ? user.domainValidated : false,
+            course: fullCertData.course,
+            certificateType: fullCertData.certificateType,
+            yearOfGraduation: fullCertData.yearOfGraduation,
             isRevoked: revocationStatus.isRevoked,
             revokedAt: revocationStatus.revokedAt,
             revocationReason: revocationStatus.reason

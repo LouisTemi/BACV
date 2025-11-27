@@ -40,8 +40,8 @@ export default function DeployPopup({method, setCertificates, setTestnet}) {
     const getChainId = (network) => {
         const chainIds = {
             'localhost': 1337,
-            'goerli': 5,
             'sepolia': 11155111,
+            'goerli': 5,
             'mainnet': 1
         };
         return chainIds[network] || 1337;
@@ -71,8 +71,12 @@ export default function DeployPopup({method, setCertificates, setTestnet}) {
                     });
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 } catch (switchError) {
-                    const networkName = testnetSelection === 'localhost' ? 'Localhost 8545' : testnetSelection;
-                    throw new Error(`Please switch MetaMask to ${networkName} network`);
+                    const networkNames = {
+                        'localhost': 'Localhost 8545',
+                        'sepolia': 'Sepolia Testnet',
+                        'mainnet': 'Ethereum Mainnet'
+                    };
+                    throw new Error(`Please switch MetaMask to ${networkNames[testnetSelection]} network`);
                 }
             }
 
@@ -114,7 +118,7 @@ export default function DeployPopup({method, setCertificates, setTestnet}) {
                 if (saveData.data === "Success") {
                     setIsDeploying(false);
                     setOpen(false);
-                    alert(`Contract deployed successfully at ${contract.address}`);
+                    alert(`Contract deployed successfully at ${contract.address}\n\nNetwork: ${testnetSelection}\n\nYou can now issue certificates!`);
                     window.location.assign('/submitDoc');
                 } else {
                     throw new Error(saveData.dataError || 'Failed to save contract');
@@ -161,6 +165,7 @@ export default function DeployPopup({method, setCertificates, setTestnet}) {
                     background: 'linear-gradient(135deg, #2563eb 0%, #7c3aed 100%)',
                     textTransform: 'none',
                     fontWeight: 600,
+                    borderRadius: '10px',
                     '&:hover': {
                         background: 'linear-gradient(135deg, #1d4ed8 0%, #6d28d9 100%)',
                     }
@@ -209,16 +214,47 @@ export default function DeployPopup({method, setCertificates, setTestnet}) {
                             onChange={handleTestnetChange}
                             sx={{ borderRadius: '10px' }}
                         >
-                            <MenuItem value="localhost">Localhost (Development)</MenuItem>
-                            <MenuItem value="goerli">Goerli Testnet</MenuItem>
-                            <MenuItem value="mainnet">Ethereum Mainnet</MenuItem>                        
+                            <MenuItem value="localhost">
+                                <Box>
+                                    <Typography sx={{ fontWeight: 500 }}>Localhost</Typography>
+                                    <Typography sx={{ fontSize: '12px', color: '#6b7280' }}>
+                                        Development (Ganache)
+                                    </Typography>
+                                </Box>
+                            </MenuItem>
+                            <MenuItem value="sepolia">
+                                <Box>
+                                    <Typography sx={{ fontWeight: 500 }}>Sepolia Testnet</Typography>
+                                    <Typography sx={{ fontSize: '12px', color: '#6b7280' }}>
+                                        Free test network (recommended)
+                                    </Typography>
+                                </Box>
+                            </MenuItem>
+                            <MenuItem value="goerli">
+                                <Box>
+                                    <Typography sx={{ fontWeight: 500 }}>Goerli Testnet</Typography>
+                                    <Typography sx={{ fontSize: '12px', color: '#6b7280' }}>
+                                        Legacy test network
+                                    </Typography>
+                                </Box>
+                            </MenuItem>
+                            <MenuItem value="mainnet">
+                                <Box>
+                                    <Typography sx={{ fontWeight: 500, color: '#dc2626' }}>Ethereum Mainnet</Typography>
+                                    <Typography sx={{ fontSize: '12px', color: '#dc2626' }}>
+                                        Real ETH required ⚠️
+                                    </Typography>
+                                </Box>
+                            </MenuItem>                       
                         </Select>
                     </FormControl>
 
                     {method === "deploy" && (
                         <Alert severity="warning" sx={{ borderRadius: '10px' }}>
                             <Typography sx={{ fontSize: '14px' }}>
-                                MetaMask will prompt you to sign the deployment transaction.
+                                MetaMask will prompt you to sign the deployment transaction. 
+                                {testnetSelection === 'sepolia' && ' Deployment costs ~0.01 Sepolia ETH.'}
+                                {testnetSelection === 'localhost' && ' Make sure Ganache is running.'}
                             </Typography>
                         </Alert>
                     )}

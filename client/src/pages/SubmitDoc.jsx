@@ -118,11 +118,19 @@ export default function SubmitDoc() {
             }
 
             // Verify network matches selection
-            const chainIds = { 'localhost': 1337, 'goerli': 5, 'mainnet': 1 };
+            const chainIds = { 
+                'localhost': 1337, 
+                'sepolia': 11155111,
+                'mainnet': 1 
+            };
             const expectedChainId = chainIds[formInputs.testnet];
             if (chainId !== expectedChainId) {
-                const networkName = formInputs.testnet === 'localhost' ? 'Localhost 8545' : formInputs.testnet;
-                throw new Error(`Please switch MetaMask to ${networkName} network`);
+                const networkNames = {
+                    'localhost': 'Localhost 8545',
+                    'sepolia': 'Sepolia Testnet',
+                    'mainnet': 'Ethereum Mainnet'
+                };
+                throw new Error(`Please switch MetaMask to ${networkNames[formInputs.testnet]} network`);
             }
 
             // Prepare form data
@@ -178,7 +186,7 @@ export default function SubmitDoc() {
                 });
 
                 setIsUploading(false);
-                alert('Certificate issued successfully!');
+                alert(`Certificate issued successfully!\n\nTransaction: ${receipt.transactionHash}\n\nView on Sepolia Etherscan:\nhttps://sepolia.etherscan.io/tx/${receipt.transactionHash}`);
                 window.location.assign(`/dashboard`);
             } else if (data.dataError) {                
                 setEtherErrorMsg(data.dataError);
@@ -272,9 +280,30 @@ export default function SubmitDoc() {
                                         error={errors?.testnetError}
                                         sx={{ borderRadius: '10px' }}
                                     >
-                                        <MenuItem value="localhost">Localhost (Development)</MenuItem>
-                                        <MenuItem value="goerli">Goerli Testnet</MenuItem>
-                                        <MenuItem value="mainnet">Ethereum Mainnet</MenuItem>                        
+                                        <MenuItem value="localhost">
+                                            <Box>
+                                                <Typography sx={{ fontWeight: 500 }}>Localhost</Typography>
+                                                <Typography sx={{ fontSize: '12px', color: '#6b7280' }}>
+                                                    Development (Ganache)
+                                                </Typography>
+                                            </Box>
+                                        </MenuItem>
+                                        <MenuItem value="sepolia">
+                                            <Box>
+                                                <Typography sx={{ fontWeight: 500 }}>Sepolia Testnet</Typography>
+                                                <Typography sx={{ fontSize: '12px', color: '#6b7280' }}>
+                                                    Free test network (recommended)
+                                                </Typography>
+                                            </Box>
+                                        </MenuItem>
+                                        <MenuItem value="mainnet">
+                                            <Box>
+                                                <Typography sx={{ fontWeight: 500, color: '#dc2626' }}>Ethereum Mainnet</Typography>
+                                                <Typography sx={{ fontSize: '12px', color: '#dc2626' }}>
+                                                    Real ETH required ⚠️
+                                                </Typography>
+                                            </Box>
+                                        </MenuItem>                     
                                     </Select>
                                 </FormControl>
 
@@ -392,7 +421,9 @@ export default function SubmitDoc() {
                                     <Box>
                                         <LinearProgress sx={{ borderRadius: '10px', height: '8px', mb: 2 }} />
                                         <Typography sx={{ textAlign: 'center', color: '#6b7280', fontSize: '14px' }}>
-                                            MetaMask will prompt you to sign the transaction...
+                                            {formInputs.testnet === 'sepolia' 
+                                                ? 'Submitting to Sepolia testnet... MetaMask will prompt you to sign.' 
+                                                : 'MetaMask will prompt you to sign the transaction...'}
                                         </Typography>
                                     </Box>
                                 ) : (
@@ -414,7 +445,7 @@ export default function SubmitDoc() {
                                             }
                                         }}
                                     >
-                                        Issue Certificate
+                                        Issue Certificate on {formInputs.testnet === 'sepolia' ? 'Sepolia' : formInputs.testnet === 'localhost' ? 'Localhost' : 'Blockchain'}
                                     </Button>
                                 )}
                             </form>

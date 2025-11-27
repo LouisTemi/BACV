@@ -16,7 +16,7 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 export default function VerifyPage() {
   const history = useHistory();
   const [txHash, setTxHash] = useState('');
-  const [network, setNetwork] = useState('localhost');
+  const [network, setNetwork] = useState('sepolia');
   const [error, setError] = useState('');
 
   const handleVerify = () => {
@@ -104,9 +104,30 @@ export default function VerifyPage() {
               onChange={(e) => setNetwork(e.target.value)}
               sx={{ borderRadius: '10px' }}
             >
-              <MenuItem value="localhost">Localhost (Development)</MenuItem>
-              <MenuItem value="goerli">Goerli Testnet</MenuItem>
-              <MenuItem value="mainnet">Ethereum Mainnet</MenuItem>
+              <MenuItem value="localhost">
+                <Box>
+                  <Typography sx={{ fontWeight: 500 }}>Localhost</Typography>
+                  <Typography sx={{ fontSize: '12px', color: '#6b7280' }}>
+                    Development (Ganache)
+                  </Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem value="sepolia">
+                <Box>
+                  <Typography sx={{ fontWeight: 500 }}>Sepolia Testnet</Typography>
+                  <Typography sx={{ fontSize: '12px', color: '#6b7280' }}>
+                    Ethereum test network
+                  </Typography>
+                </Box>
+              </MenuItem>
+              <MenuItem value="mainnet">
+                <Box>
+                  <Typography sx={{ fontWeight: 500 }}>Ethereum Mainnet</Typography>
+                  <Typography sx={{ fontSize: '12px', color: '#6b7280' }}>
+                    Production network
+                  </Typography>
+                </Box>
+              </MenuItem>
             </Select>
           </FormControl>
 
@@ -151,6 +172,24 @@ export default function VerifyPage() {
           >
             Verify Certificate
           </Button>
+
+          {/* Quick Test Link */}
+          {network === 'sepolia' && (
+            <Box sx={{ 
+              mt: 2,
+              p: 2,
+              backgroundColor: '#f0fdf4',
+              borderRadius: '8px',
+              border: '1px solid #86efac'
+            }}>
+              <Typography sx={{ fontSize: '13px', color: '#166534', fontWeight: 500, mb: 0.5 }}>
+                ✅ Sepolia Network Selected
+              </Typography>
+              <Typography sx={{ fontSize: '12px', color: '#15803d' }}>
+                Paste your transaction hash from Sepolia Etherscan to verify
+              </Typography>
+            </Box>
+          )}
         </Box>
 
         {/* Info Box */}
@@ -171,6 +210,9 @@ export default function VerifyPage() {
               The transaction hash is provided to the certificate holder when their certificate is issued. 
               It can be found in the email sent to them, encoded in the QR code on their certificate, 
               or shared directly as a verification link.
+            </Typography>
+            <Typography sx={{ color: '#6b7280', fontSize: '14px', lineHeight: 1.6, mt: 1 }}>
+              You can also find it on Sepolia Etherscan by searching for your wallet address.
             </Typography>
           </Box>
         </Box>
