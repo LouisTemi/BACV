@@ -1,0 +1,48 @@
+{
+  "name": "azcredify",
+  "version": "1.0.0",
+  "description": "Project 4 Azcredify",
+  "main": "server.js",
+  "scripts": {
+    "build": "cd client && npm run build",
+    "install-client": "cd client && npm install",
+    "heroku-postbuild": "npm run install-client && npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "server": "nodemon server.js",
+    "client": "npm start --prefix client",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@truffle/hdwallet-provider": "^1.7.0",
+    "axios": "^0.24.0",
+    "bcrypt": "^5.0.1",
+    "bip39": "^3.0.4",
+    "cloudinary": "^1.27.1",
+    "cookie-parser": "^1.4.6",
+    "dotenv": "^10.0.0",
+    "ethereumjs-wallet": "^1.0.2",
+    "express": "^4.17.1",
+    "ipfs": "^0.60.2",
+    "ipfs-http-client": "^54.0.2",
+    "jsonwebtoken": "^8.5.1",
+    "mongoose": "^6.0.13",
+    "multer": "^1.4.3",
+    "node-fetch": "^2.6.1",
+    "nodemailer": "^6.7.2",
+    "pdf-lib": "^1.17.1",
+    "qrcode": "^1.5.0",
+    "resend": "^6.5.2",
+    "solc": "^0.8.10",
+    "validator": "^13.7.0",
+    "web3": "^1.6.1"
+  },
+  "engines": {
+    "node": "16.13.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
