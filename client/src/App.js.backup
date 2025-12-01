@@ -35,7 +35,7 @@ function App() {
 
   useEffect(() => {
     const getUserData = async () => {      
-      const response = await fetch(`https://bacv-backend.onrender.com/api/users/jwt`, {
+      const response = await fetch(`/api/users/jwt`, {
         method: 'GET',
         headers: { 'content-type': 'application/json' },
       })
