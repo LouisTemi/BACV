@@ -30,6 +30,25 @@ db.on('disconnected', () => console.log('mongo disconnected'));
 // app.use(express.static('public'));
 
 //Middleware
+const cors = require('cors');
+
+// CORS configuration
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://bacv-xyz.vercel.app', // Replace with your actual Vercel URL
+];
+
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(cookieParser());
 // app.use((_, res, next) => {
