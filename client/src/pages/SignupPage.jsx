@@ -141,7 +141,7 @@ export default function SignupPage({ login, setLogin }) {
             setErrors(newErrors);
         } else {
             setIsLoading(true);
-            const response = await fetch("/api/users/signup", {
+            const response = await fetch("https://bacv-backend.onrender.com/api/users/signup", {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify(formInputs)

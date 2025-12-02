@@ -66,7 +66,7 @@ export default function LoginPage({setLogin}) {
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
         } else {
-            const response = await fetch("/api/users/login", {
+            const response = await fetch("https://bacv-backend.onrender.com/api/users/login", {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify(formInputs)
