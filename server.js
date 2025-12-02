@@ -35,7 +35,7 @@ const cors = require('cors');
 // CORS configuration
 const allowedOrigins = [
   'http://localhost:3000',
-  'https://bacv-xyz.vercel.app', // Replace with your actual Vercel URL
+  'https://bacv-louistemi-louistemis-projects.vercel.app', // Replace with your actual Vercel URL
 ];
 
 app.use(cors({
